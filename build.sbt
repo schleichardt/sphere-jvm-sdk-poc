@@ -6,5 +6,8 @@ libraryDependencies ++= Seq(
   "org.joda" % "joda-convert" % "1.6",
   "net.jcip" % "jcip-annotations" % "1.0",
   "com.typesafe" % "config" % "1.2.0",
-  "com.neovisionaries" % "nv-i18n" % "1.12"
+  "com.neovisionaries" % "nv-i18n" % "1.12",
+  "junit" % "junit-dep" % "4.11" % "test",
+  "org.easytesting" % "fest-assert" % "1.4" % "test",
+  "com.novocode" % "junit-interface" % "0.10" % "test"
 )

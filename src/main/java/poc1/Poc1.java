@@ -1,28 +1,12 @@
+package poc1;
+
 import com.google.common.base.Function;
 import com.google.common.base.Optional;
 
 import java.util.Locale;
 
-class Poc {
+class Poc1 {
     public static Locale en = Locale.ENGLISH;
-
-    public static void main(String[] args) {
-
-        //masterData(current(name(en="MB PREMIUM TECH T"))) and id = "e7ba4c75-b1bb-483d-94d8-2c4a10f78472"
-        final ProductQueryModel q = ProductQueryModel.instance();
-        final Predicate<Product> predicate = q.id().is("e7ba4c75-b1bb-483d-94d8-2c4a10f78472");
-        final Predicate<Product> productPredicate =
-                q.masterData().current().name(en).is("MB PREMIUM TECH T").and(predicate);
-        //String ist viel kürzer, leichter zu lesen und leichter zu implementieren
-
-
-        System.out.println(predicate.toSphereQuery());
-
-        //masterData(current(slug(en="peter-42") and name(en="Peter")))
-//        final ProductDataQueryModel<Product> a = q.masterData().current();
-//        a.slug(en).is("peter-42").and(a.name(en).is("Peter"));
-    }
-
 
     static class ProductQueryModel {
         private static final ProductQueryModel instance = new ProductQueryModel();
@@ -62,16 +46,15 @@ class Poc {
         }
 
         public String buildQuery(final String definition) {
-            final String currentQuery = pathSegment + "(" + definition + ")";
+            final String currentQuery = pathSegment + definition;
             return parent.transform(new Function<QueryModel<T>, String>() {
                 @Override
                 public String apply(QueryModel<T> input) {
-                    return input.buildQuery(currentQuery);
+                    return input.buildQuery("(" + currentQuery + ")");
                 }
             }).or(currentQuery);
         }
     }
-
 
     static interface Predicate<T> {
         Predicate<T> or(Predicate<T> other);
@@ -99,20 +82,19 @@ class Poc {
         public Predicate<T> and(Predicate<T> other) {
             return null;
         }
-//
-//        @Override
-//        public String toSphereQuery() {
-//            return null;
-//        }
 
+
+        @Override
+        public final String toSphereQuery() {
+            return queryModel.buildQuery(toSphereQueryInternal());
+        }
+
+        protected abstract String toSphereQueryInternal();
 
         protected QueryModel<T> getQueryModel() {
             return queryModel;
         }
     }
-
-
-
 
     static class StringQueryModel<T> extends QueryModel<T> {
 
@@ -121,37 +103,23 @@ class Poc {
         }
 
         public Predicate<T> is(String s) {
-            return null;
+            return new EqPredicate<T,String>(this, s);
         }
     }
 
+    static class EqPredicate<T, V> extends PredicateBase<T> {
+        private final V value;
 
-
-    //should be package scope?
-    static class PredicateFactory {
-
-    }
-
-    static class Eq<T> extends PredicateBase<T> {
-        private final T value;
-
-        Eq(QueryModel<T> queryModel, T value) {
+        EqPredicate(QueryModel<T> queryModel, V value) {
             super(queryModel);
             this.value = value;
         }
 
         @Override
-        public String toSphereQuery() {
-            return "=" + value;
+        protected String toSphereQueryInternal() {
+            return "=\"" + value + '"';
         }
     }
-
-
-
-
-
-
-
 
     static class Product {
 
@@ -161,16 +129,16 @@ class Poc {
 
     }
 
+    static class LocalizedStringQueryModel<T> extends QueryModel<T>  implements PredicateProducer<T>{
 
-    static class LocalizedStringLangQueryModel<T> implements PredicateProducer<T>{
 
-        public Predicate<T> is(String s) {
-            return null;
+        public LocalizedStringQueryModel(QueryModel<T> parent, String pathSegment) {
+            super(parent, pathSegment);
         }
-    }
 
-
-    static class LocalizedStringQueryModel<T> {
+        public StringQueryModel forLang(Locale locale) {
+            return new StringQueryModel(locale.toLanguageTag());
+        }
     }
 
     static class ProductCatalogDataQueryModel<T> extends QueryModel<T> {
@@ -189,20 +157,20 @@ class Poc {
             super(parent, pathSegment);
         }
 
-        public LocalizedStringQueryModel<T> slug() {
-            return null;
+        public StringQueryModel<T> name(Locale locale) {
+            return name().forLang(locale);
         }
 
         public LocalizedStringQueryModel<T> name() {
-            return null;
+            return newLocalizedStringLangQueryModel("name");
         }
 
-        public LocalizedStringLangQueryModel<T> name(Locale locale) {
-            return null;
+        private LocalizedStringQueryModel newLocalizedStringLangQueryModel(String pathSegment) {
+            return new LocalizedStringQueryModel(this, pathSegment);
         }
 
-        public LocalizedStringLangQueryModel<T> slug(Locale locale) {
-            return null;
+        public LocalizedStringQueryModel<T> slug() {
+            return newLocalizedStringLangQueryModel("slug");
         }
     }
 }
