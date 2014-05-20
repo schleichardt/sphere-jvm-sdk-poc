@@ -21,7 +21,7 @@ public class Poc1Test {
 
     @Test
     public void query2() {
-        assertThat(query3.toSphereQuery()).isEqualTo(expected2);
+        assertThat(query2.toSphereQuery()).isEqualTo(expected2);
     }
 
     @Test

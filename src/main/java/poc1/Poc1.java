@@ -20,7 +20,7 @@ class Poc1 {
         }
 
         public StringQueryModel<Product> id() {
-            return new StringQueryModel("id");
+            return new StringQueryModel(this, "id");
         }
 
         public static ProductQueryModel instance() {
@@ -53,6 +53,15 @@ class Poc1 {
                     return input.buildQuery("(" + currentQuery + ")");
                 }
             }).or(currentQuery);
+        }
+
+
+        @Override
+        public String toString() {
+            return "QueryModel{" +
+                    "pathSegment='" + pathSegment + '\'' +
+                    ", parent=" + parent +
+                    '}';
         }
     }
 
@@ -98,8 +107,8 @@ class Poc1 {
 
     static class StringQueryModel<T> extends QueryModel<T> {
 
-        protected StringQueryModel(String pathSegment) {
-            super(pathSegment);
+        protected StringQueryModel(QueryModel<T> parent, String pathSegment) {
+            super(parent, pathSegment);
         }
 
         public Predicate<T> is(String s) {
