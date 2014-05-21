@@ -8,11 +8,12 @@ import java.util.Locale;
 class Poc1 {
     public static Locale en = Locale.ENGLISH;
 
-    static class ProductQueryModel {
+    static class ProductQueryModel extends QueryModel<Product> {
         private static final ProductQueryModel instance = new ProductQueryModel();
 
 
         ProductQueryModel() {
+            super("");
         }
 
         public ProductCatalogDataQueryModel<Product> masterData() {
@@ -32,7 +33,7 @@ class Poc1 {
         private final String pathSegment;
         private final Optional<QueryModel<T>> parent;
 
-        protected  QueryModel(String pathSegment) {
+        protected QueryModel(String pathSegment) {
             this(Optional.<QueryModel<T>>absent(), pathSegment);
         }
 
@@ -50,11 +51,14 @@ class Poc1 {
             return parent.transform(new Function<QueryModel<T>, String>() {
                 @Override
                 public String apply(QueryModel<T> input) {
-                    return input.buildQuery("(" + currentQuery + ")");
+                    String current = currentQuery;
+                    if (!input.pathSegment.isEmpty()) {
+                        current = "(" + currentQuery + ")";
+                    }
+                    return input.buildQuery(current);
                 }
             }).or(currentQuery);
         }
-
 
         @Override
         public String toString() {
@@ -74,24 +78,46 @@ class Poc1 {
     }
 
     static abstract class PredicateBase<T> implements Predicate<T> {
-
-
-        private final QueryModel<T> queryModel;
-
-        protected PredicateBase(QueryModel<T> queryModel) {
-            this.queryModel = queryModel;
-        }
-
         @Override
         public Predicate<T> or(Predicate<T> other) {
-            return null;
+            return newPredicateConnector(other, "or");
         }
 
         @Override
         public Predicate<T> and(Predicate<T> other) {
-            return null;
+            return newPredicateConnector(other, "and");
         }
 
+        private PredicateConnector newPredicateConnector(Predicate<T> other, String connectorWord) {
+            return new PredicateConnector(connectorWord, this, other);
+        }
+    }
+
+    static class PredicateConnector<T> extends PredicateBase<T> {
+        private final String connectorWord;
+        private final Predicate<T> leftPredicate;
+        private final Predicate<T> rightPredicate;
+
+        PredicateConnector(String connectorWord, Predicate<T> leftPredicate, Predicate<T> rightPredicate) {
+            this.connectorWord = connectorWord;
+            this.leftPredicate = leftPredicate;
+            this.rightPredicate = rightPredicate;
+        }
+
+        @Override
+        public String toSphereQuery() {
+            return leftPredicate.toSphereQuery() + " " + connectorWord + " " + rightPredicate.toSphereQuery();
+        }
+    }
+
+    static abstract class PredicateWithQueryModelBase<T> extends PredicateBase<T> {
+
+
+        private final QueryModel<T> queryModel;
+
+        protected PredicateWithQueryModelBase(QueryModel<T> queryModel) {
+            this.queryModel = queryModel;
+        }
 
         @Override
         public final String toSphereQuery() {
@@ -107,19 +133,19 @@ class Poc1 {
 
     static class StringQueryModel<T> extends QueryModel<T> {
 
-        protected StringQueryModel(QueryModel<T> parent, String pathSegment) {
+        public StringQueryModel(QueryModel<T> parent, String pathSegment) {
             super(parent, pathSegment);
         }
 
         public Predicate<T> is(String s) {
-            return new EqPredicate<T,String>(this, s);
+            return new EqPredicateWithQueryModel<T, String>(this, s);
         }
     }
 
-    static class EqPredicate<T, V> extends PredicateBase<T> {
+    static class EqPredicateWithQueryModel<T, V> extends PredicateWithQueryModelBase<T> {
         private final V value;
 
-        EqPredicate(QueryModel<T> queryModel, V value) {
+        EqPredicateWithQueryModel(QueryModel<T> queryModel, V value) {
             super(queryModel);
             this.value = value;
         }
@@ -138,7 +164,7 @@ class Poc1 {
 
     }
 
-    static class LocalizedStringQueryModel<T> extends QueryModel<T>  implements PredicateProducer<T>{
+    static class LocalizedStringQueryModel<T> extends QueryModel<T> implements PredicateProducer<T> {
 
 
         public LocalizedStringQueryModel(QueryModel<T> parent, String pathSegment) {
@@ -146,7 +172,7 @@ class Poc1 {
         }
 
         public StringQueryModel forLang(Locale locale) {
-            return new StringQueryModel(locale.toLanguageTag());
+            return new StringQueryModel(this, locale.toLanguageTag());
         }
     }
 
