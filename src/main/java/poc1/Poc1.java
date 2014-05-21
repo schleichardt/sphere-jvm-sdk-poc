@@ -6,7 +6,7 @@ import com.google.common.base.Optional;
 import java.util.Locale;
 
 class Poc1 {
-    public static Locale en = Locale.ENGLISH;
+    public static final Locale en = Locale.ENGLISH;
 
     static class ProductQueryModel extends QueryModel<Product> {
         private static final ProductQueryModel instance = new ProductQueryModel();
@@ -17,11 +17,11 @@ class Poc1 {
         }
 
         public ProductCatalogDataQueryModel<Product> masterData() {
-            return new ProductCatalogDataQueryModel<Product>("masterData");
+            return new ProductCatalogDataQueryModel<>("masterData");
         }
 
         public StringQueryModel<Product> id() {
-            return new StringQueryModel(this, "id");
+            return new StringQueryModel<>(this, "id");
         }
 
         public static ProductQueryModel instance() {
@@ -88,8 +88,8 @@ class Poc1 {
             return newPredicateConnector(other, "and");
         }
 
-        private PredicateConnector newPredicateConnector(Predicate<T> other, String connectorWord) {
-            return new PredicateConnector(connectorWord, this, other);
+        private PredicateConnector<T> newPredicateConnector(Predicate<T> other, String connectorWord) {
+            return new PredicateConnector<>(connectorWord, this, other);
         }
     }
 
@@ -138,7 +138,7 @@ class Poc1 {
         }
 
         public Predicate<T> is(String s) {
-            return new EqPredicateWithQueryModel<T, String>(this, s);
+            return new EqPredicateWithQueryModel<>(this, s);
         }
     }
 
@@ -160,19 +160,17 @@ class Poc1 {
 
     }
 
-    static interface PredicateProducer<T> {
 
-    }
 
-    static class LocalizedStringQueryModel<T> extends QueryModel<T> implements PredicateProducer<T> {
+    static class LocalizedStringQueryModel<T> extends QueryModel<T> {
 
 
         public LocalizedStringQueryModel(QueryModel<T> parent, String pathSegment) {
             super(parent, pathSegment);
         }
 
-        public StringQueryModel forLang(Locale locale) {
-            return new StringQueryModel(this, locale.toLanguageTag());
+        public StringQueryModel<T> forLang(Locale locale) {
+            return new StringQueryModel<>(this, locale.toLanguageTag());
         }
     }
 
@@ -182,7 +180,7 @@ class Poc1 {
         }
 
         public ProductDataQueryModel<T> current() {
-            return new ProductDataQueryModel(this, "current");
+            return new ProductDataQueryModel<>(this, "current");
         }
     }
 
@@ -200,8 +198,8 @@ class Poc1 {
             return newLocalizedStringLangQueryModel("name");
         }
 
-        private LocalizedStringQueryModel newLocalizedStringLangQueryModel(String pathSegment) {
-            return new LocalizedStringQueryModel(this, pathSegment);
+        private LocalizedStringQueryModel<T> newLocalizedStringLangQueryModel(String pathSegment) {
+            return new LocalizedStringQueryModel<>(this, pathSegment);
         }
 
         public LocalizedStringQueryModel<T> slug() {
