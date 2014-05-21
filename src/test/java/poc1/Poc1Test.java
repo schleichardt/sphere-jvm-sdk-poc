@@ -15,17 +15,17 @@ public class Poc1Test {
 
 
     @Test
-    public void query1() {
+    public void simplePredicate() {
         assertThat(query1.toSphereQuery()).isEqualTo(expected1);
     }
 
     @Test
-    public void query2() {
+    public void deepAttributePredicate() {
         assertThat(query2.toSphereQuery()).isEqualTo(expected2);
     }
 
     @Test
-    public void query3() {
+    public void connectPredicatesWithAnd() {
         final String expected = expected1 + " and " + expected2;
         assertThat(query3.toSphereQuery()).isEqualTo(expected);
     }
