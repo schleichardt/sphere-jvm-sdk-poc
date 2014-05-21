@@ -3,10 +3,41 @@ package poc1;
 import com.google.common.base.Function;
 import com.google.common.base.Optional;
 
+import javax.annotation.Nullable;
 import java.util.Locale;
 
 class Poc1 {
     public static final Locale en = Locale.ENGLISH;
+
+    public static enum SortDirection {
+        ASC, DESC
+    }
+
+    public static class SortExpression<T> {
+
+        private final QueryModel<T> queryModel;
+        private final SortDirection sortDirection;
+
+        public SortExpression(QueryModel<T> queryModel, SortDirection sortDirection) {
+            this.queryModel = queryModel;
+            this.sortDirection = sortDirection;
+        }
+
+        public String toSphereSort() {
+            return extractPath(queryModel) + " " + sortDirection.toString().toLowerCase();
+        }
+
+        private String extractPath(QueryModel<T> queryModel) {
+            final String pathSegment = queryModel.getPathSegment();
+            final String parentsPathSegment = queryModel.getParent().transform(new Function<QueryModel<T>, String>() {
+                @Override
+                public String apply(QueryModel<T> input) {
+                    return extractPath(input) + ".";
+                }
+            }).or("");
+            return parentsPathSegment + pathSegment;
+        }
+    }
 
     static class ProductQueryModel extends QueryModel<Product> {
         private static final ProductQueryModel instance = new ProductQueryModel();
@@ -58,6 +89,14 @@ class Poc1 {
                     return input.buildQuery(current);
                 }
             }).or(currentQuery);
+        }
+
+        public String getPathSegment() {
+            return pathSegment;
+        }
+
+        public Optional<QueryModel<T>> getParent() {
+            return parent;
         }
 
         @Override
@@ -139,6 +178,10 @@ class Poc1 {
 
         public Predicate<T> is(String s) {
             return new EqPredicateWithQueryModel<>(this, s);
+        }
+
+        public SortExpression<T> sort(SortDirection direction) {
+            return new SortExpression<>(this, direction);
         }
     }
 

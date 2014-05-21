@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import static org.fest.assertions.Assertions.assertThat;
 import static poc1.Poc1.*;
+import static poc1.Poc1.SortDirection.*;
 
 public class Poc1Test {
     final ProductQueryModel q = ProductQueryModel.instance();
@@ -28,5 +29,12 @@ public class Poc1Test {
     public void connectPredicatesWithAnd() {
         final String expected = expected1 + " and " + expected2;
         assertThat(query3.toSphereQuery()).isEqualTo(expected);
+    }
+
+    @Test
+    public void sort() {
+        final String expected = "masterData.current.name.en asc";
+        final String actual = q.masterData().current().name(en).sort(ASC).toSphereSort();
+        assertThat(actual).isEqualTo(expected);
     }
 }
