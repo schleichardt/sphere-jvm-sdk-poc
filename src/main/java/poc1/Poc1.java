@@ -8,105 +8,45 @@ import java.util.Locale;
 
 class Poc1 {
     public static final Locale en = Locale.ENGLISH;
+    public static final Locale de = Locale.GERMAN;
 
     public static enum SortDirection {
         ASC, DESC
     }
 
-    public static class SortExpression<T> {
+    // ---------------------------------------------------------- Sort
 
-        private final QueryModel<T> queryModel;
-        private final SortDirection sortDirection;
+    static interface Sort<T> {
+        String toSphereSort();
+    }
 
-        public SortExpression(QueryModel<T> queryModel, SortDirection sortDirection) {
-            this.queryModel = queryModel;
-            this.sortDirection = sortDirection;
+    static class SphereSort<T> implements Sort<T> {
+        private final QueryModel<T> path;
+        private final SortDirection direction;
+
+        protected SphereSort(QueryModel<T> path, SortDirection direction) {
+            this.path = path;
+            this.direction = direction;
         }
 
         public String toSphereSort() {
-            return extractPath(queryModel) + " " + sortDirection.toString().toLowerCase();
+            return renderPath(path) + " " + direction.toString().toLowerCase();
         }
 
-        private String extractPath(QueryModel<T> queryModel) {
-            final String pathSegment = queryModel.getPathSegment();
-            final String parentsPathSegment = queryModel.getParent().transform(new Function<QueryModel<T>, String>() {
-                @Override
-                public String apply(QueryModel<T> input) {
-                    return extractPath(input) + ".";
-                }
-            }).or("");
-            return parentsPathSegment + pathSegment;
-        }
-    }
+        private String renderPath(QueryModel<T> model) {
+            if (model.getParent().isPresent()) {
+                String beginning = renderPath(model.getParent().get());
 
-    static class ProductQueryModel extends QueryModel<Product> {
-        private static final ProductQueryModel instance = new ProductQueryModel();
-
-
-        ProductQueryModel() {
-            super("");
-        }
-
-        public ProductCatalogDataQueryModel<Product> masterData() {
-            return new ProductCatalogDataQueryModel<>("masterData");
-        }
-
-        public StringQueryModel<Product> id() {
-            return new StringQueryModel<>(this, "id");
-        }
-
-        public static ProductQueryModel instance() {
-            return instance;
+                return beginning +
+                        (model.getPathSegment().isPresent() ?
+                                (beginning.isEmpty() ? "" : ".") + model.getPathSegment().get() : "");
+            } else {
+                return "";
+            }
         }
     }
 
-    static abstract class QueryModel<T> {
-        private final String pathSegment;
-        private final Optional<QueryModel<T>> parent;
-
-        protected QueryModel(String pathSegment) {
-            this(Optional.<QueryModel<T>>absent(), pathSegment);
-        }
-
-        public QueryModel(QueryModel<T> parent, String pathSegment) {
-            this(Optional.fromNullable(parent), pathSegment);
-        }
-
-        public QueryModel(Optional<QueryModel<T>> parent, String pathSegment) {
-            this.parent = parent;
-            this.pathSegment = pathSegment;
-        }
-
-        public String buildQuery(final String definition) {
-            final String currentQuery = pathSegment + definition;
-            return parent.transform(new Function<QueryModel<T>, String>() {
-                @Override
-                public String apply(QueryModel<T> input) {
-                    String current = currentQuery;
-                    if (!input.pathSegment.isEmpty()) {
-                        current = "(" + currentQuery + ")";
-                    }
-                    return input.buildQuery(current);
-                }
-            }).or(currentQuery);
-        }
-
-        public String getPathSegment() {
-            return pathSegment;
-        }
-
-        public Optional<QueryModel<T>> getParent() {
-            return parent;
-        }
-
-        @Override
-        public String toString() {
-            return "QueryModel{" +
-                    "pathSegment='" + pathSegment + '\'' +
-                    ", parent=" + parent +
-                    '}';
-        }
-    }
+    // ---------------------------------------------------------- Predicate
 
     static interface Predicate<T> {
         Predicate<T> or(Predicate<T> other);
@@ -117,18 +57,23 @@ class Poc1 {
     }
 
     static abstract class PredicateBase<T> implements Predicate<T> {
-        @Override
         public Predicate<T> or(Predicate<T> other) {
-            return newPredicateConnector(other, "or");
+            return new PredicateConnector<>("or", this, other);
         }
 
-        @Override
         public Predicate<T> and(Predicate<T> other) {
-            return newPredicateConnector(other, "and");
+            return new PredicateConnector<>("and", this, other);
         }
 
-        private PredicateConnector<T> newPredicateConnector(Predicate<T> other, String connectorWord) {
-            return new PredicateConnector<>(connectorWord, this, other);
+        public String buildQuery(QueryModel<T> model, String definition) {
+            String current = (model.getPathSegment().isPresent() ? model.getPathSegment().get() : "") + definition;
+
+            if (model.getParent().isPresent()) {
+                QueryModel<T> parent = model.getParent().get();
+                return buildQuery(parent, parent.getPathSegment().isPresent() ? "(" + current + ")" : current);
+            } else {
+                return current;
+            }
         }
     }
 
@@ -149,104 +94,187 @@ class Poc1 {
         }
     }
 
-    static abstract class PredicateWithQueryModelBase<T> extends PredicateBase<T> {
-
-
+    static abstract class QueryModelPredicate<T> extends PredicateBase<T> {
         private final QueryModel<T> queryModel;
 
-        protected PredicateWithQueryModelBase(QueryModel<T> queryModel) {
+        protected QueryModelPredicate(QueryModel<T> queryModel) {
             this.queryModel = queryModel;
         }
 
         @Override
         public final String toSphereQuery() {
-            return queryModel.buildQuery(toSphereQueryInternal());
+            return buildQuery(queryModel, render());
         }
 
-        protected abstract String toSphereQueryInternal();
+        protected abstract String render();
 
         protected QueryModel<T> getQueryModel() {
             return queryModel;
         }
     }
 
-    static class StringQueryModel<T> extends QueryModel<T> {
+    // ---------------------------------------------------------- Sorting Model
 
-        public StringQueryModel(QueryModel<T> parent, String pathSegment) {
+    static interface SortingModel<T> {
+        public abstract Sort<T> sort(SortDirection sortDirection);
+    }
+
+    // ---------------------------------------------------------- Query Model
+
+    static abstract class QueryModel<T> {
+        private final Optional<String> pathSegment;
+        private final Optional<? extends QueryModel<T>> parent;
+
+        protected QueryModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
+            this.parent = parent;
+            this.pathSegment = pathSegment;
+        }
+
+        public Optional<String> getPathSegment() {
+            return pathSegment;
+        }
+
+        public Optional<? extends QueryModel<T>> getParent() {
+            return parent;
+        }
+    }
+
+    static abstract class EmbeddedQueryModel<T, C> extends QueryModel<T> {
+        protected EmbeddedQueryModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
+            super(parent, pathSegment);
+        }
+
+        public Predicate<T> where(Predicate<C> embeddedPredicate) {
+            return new EmbeddedPredicate<>(this, embeddedPredicate);
+        }
+    }
+
+    static class StringQueryModel<T> extends QueryModel<T> {
+        protected StringQueryModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
             super(parent, pathSegment);
         }
 
         public Predicate<T> is(String s) {
-            return new EqPredicateWithQueryModel<>(this, s);
-        }
-
-        public SortExpression<T> sort(SortDirection direction) {
-            return new SortExpression<>(this, direction);
+            return new EqPredicate<>(this, s);
         }
     }
 
-    static class EqPredicateWithQueryModel<T, V> extends PredicateWithQueryModelBase<T> {
+    static class StringQueryWithSoringModel<T> extends StringQueryModel<T> implements SortingModel<T> {
+        protected StringQueryWithSoringModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
+            super(parent, pathSegment);
+        }
+
+        @Override
+        public Sort<T> sort(SortDirection sortDirection) {
+            return new SphereSort<T>(this, sortDirection);
+        }
+    }
+
+    static class EqPredicate<T, V> extends QueryModelPredicate<T> {
         private final V value;
 
-        EqPredicateWithQueryModel(QueryModel<T> queryModel, V value) {
+        EqPredicate(QueryModel<T> queryModel, V value) {
             super(queryModel);
             this.value = value;
         }
 
         @Override
-        protected String toSphereQueryInternal() {
+        protected String render() {
             return "=\"" + value + '"';
         }
     }
 
-    static class Product {
+    static class EmbeddedPredicate<T, C> extends QueryModelPredicate<T> {
+        private final Predicate<C> embedded;
 
+        protected EmbeddedPredicate(QueryModel<T> queryModel, Predicate<C> embedded) {
+            super(queryModel);
+
+            this.embedded = embedded;
+        }
+
+        @Override
+        protected String render() {
+            return "(" + embedded.toSphereQuery() + ")";
+        }
     }
 
-
-
-    static class LocalizedStringQueryModel<T> extends QueryModel<T> {
-
-
-        public LocalizedStringQueryModel(QueryModel<T> parent, String pathSegment) {
+    static class LocalizedStringModel<T> extends EmbeddedQueryModel<T, LocalizedStringModel> {
+        protected LocalizedStringModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
             super(parent, pathSegment);
         }
 
-        public StringQueryModel<T> forLang(Locale locale) {
-            return new StringQueryModel<>(this, locale.toLanguageTag());
+        public StringQueryWithSoringModel<T> lang(Locale locale) {
+            return new StringQueryWithSoringModel<T>(Optional.of(this), Optional.of(locale.toLanguageTag()));
         }
     }
 
-    static class ProductCatalogDataQueryModel<T> extends QueryModel<T> {
-        public ProductCatalogDataQueryModel(String pathSegment) {
-            super(pathSegment);
+    // ---------------------------------------------------------- Product Model
+
+    static class ProductModel<T> extends EmbeddedQueryModel<T, ProductModel> {
+        private static final ProductModel<ProductModel> instance =
+                new ProductModel<>(Optional.<QueryModel<ProductModel>>absent(), Optional.<String>absent());
+
+        public static ProductModel<ProductModel> get() {
+            return instance;
         }
 
-        public ProductDataQueryModel<T> current() {
-            return new ProductDataQueryModel<>(this, "current");
-        }
-    }
-
-    static class ProductDataQueryModel<T> extends QueryModel<T> {
-
-        public ProductDataQueryModel(QueryModel<T> parent, String pathSegment) {
+        private ProductModel(Optional<QueryModel<T>> parent, Optional<String> pathSegment) {
             super(parent, pathSegment);
         }
 
-        public StringQueryModel<T> name(Locale locale) {
-            return name().forLang(locale);
+        public ProductCatalogDataModel<T> masterData() {
+            return new ProductCatalogDataModel<T>(Optional.of(this), Optional.of("masterData"));
         }
 
-        public LocalizedStringQueryModel<T> name() {
-            return newLocalizedStringLangQueryModel("name");
+        public ProductCatalogDataModel<T> catalogs() {
+            return new ProductCatalogDataModel<T>(Optional.of(this), Optional.of("catalogs"));
         }
 
-        private LocalizedStringQueryModel<T> newLocalizedStringLangQueryModel(String pathSegment) {
-            return new LocalizedStringQueryModel<>(this, pathSegment);
+        public StringQueryWithSoringModel<T> id() {
+            return new StringQueryWithSoringModel<T>(Optional.of(this), Optional.of("id"));
+        }
+    }
+
+    static class ProductCatalogDataModel<T> extends EmbeddedQueryModel<T, ProductCatalogDataModel> {
+        private static final ProductCatalogDataModel<ProductCatalogDataModel> instance =
+                new ProductCatalogDataModel<>(Optional.<QueryModel<ProductCatalogDataModel>>absent(), Optional.<String>absent());
+
+        public static ProductCatalogDataModel<ProductCatalogDataModel> get() {
+            return instance;
         }
 
-        public LocalizedStringQueryModel<T> slug() {
-            return newLocalizedStringLangQueryModel("slug");
+        protected ProductCatalogDataModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
+            super(parent, pathSegment);
+        }
+
+        public ProductDataModel<T> current() {
+            return new ProductDataModel<T>(Optional.of(this), Optional.of("current"));
+        }
+
+        public ProductDataModel<T> staged() {
+            return new ProductDataModel<T>(Optional.of(this), Optional.of("staged"));
+        }
+    }
+
+    static class ProductDataModel<T> extends EmbeddedQueryModel<T, ProductDataModel> {
+        private static final ProductDataModel<ProductDataModel> instance =
+                new ProductDataModel<>(Optional.<QueryModel<ProductDataModel>>absent(), Optional.<String>absent());
+
+        public static ProductDataModel<ProductDataModel> get() {
+            return instance;
+        }
+
+        protected ProductDataModel(Optional<? extends QueryModel<T>> parent, Optional<String> pathSegment) {
+            super(parent, pathSegment);
+        }
+
+        public LocalizedStringModel<T> name() {
+            return new LocalizedStringModel<T>(Optional.of(this), Optional.of("name"));
+        }
+
+        public LocalizedStringModel<T> slug() {
+            return new LocalizedStringModel<T>(Optional.of(this), Optional.of("slug"));
         }
     }
 }

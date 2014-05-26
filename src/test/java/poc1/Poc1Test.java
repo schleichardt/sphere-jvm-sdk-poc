@@ -7,34 +7,57 @@ import static poc1.Poc1.*;
 import static poc1.Poc1.SortDirection.*;
 
 public class Poc1Test {
-    final ProductQueryModel q = ProductQueryModel.instance();
-    final Predicate<Product> query1 = q.id().is("e7ba4c75-b1bb-483d-94d8-2c4a10f78472");
-    final Predicate<Product> query2 = q.masterData().current().name(en).is("MB PREMIUM TECH T");
-    final String expected1 = "id=\"e7ba4c75-b1bb-483d-94d8-2c4a10f78472\"";
-    final String expected2 = "masterData(current(name(en=\"MB PREMIUM TECH T\")))";
-    final Predicate<Product> query3 = query1.and(query2);
-
 
     @Test
     public void simplePredicate() {
-        assertThat(query1.toSphereQuery()).isEqualTo(expected1);
+        assertThat(ProductModel.get().id().is("ABC-12").toSphereQuery())
+            .isEqualTo("id=\"ABC-12\"");
     }
 
     @Test
     public void deepAttributePredicate() {
-        assertThat(query2.toSphereQuery()).isEqualTo(expected2);
+        assertThat(ProductModel.get().masterData().current().name().lang(en).is("MB PREMIUM TECH T").toSphereQuery())
+            .isEqualTo("masterData(current(name(en=\"MB PREMIUM TECH T\")))");
+    }
+
+    @Test
+    public void embedded1LevelDeepPredicate() {
+        Predicate<ProductDataModel> dataQuery =
+            ProductDataModel.get().name().lang(en).is("Yes").or(ProductDataModel.get().name().lang(en).is("Ja"));
+
+        assertThat(ProductModel.get().masterData().staged().where(dataQuery).toSphereQuery())
+        .isEqualTo("masterData(staged(name(en=\"Yes\") or name(en=\"Ja\")))");
+    }
+
+    @Test
+    public void embedded2LevelDeepPredicate() {
+        Predicate<ProductDataModel> dataQuery =
+            ProductDataModel.get().name().lang(en).is("Yes").or(ProductDataModel.get().name().lang(en).is("Ja"));
+
+        Predicate<ProductCatalogDataModel> catalogQuery =
+            ProductCatalogDataModel.get().current().where(dataQuery)
+                .or(ProductCatalogDataModel.get().staged().where(dataQuery));
+
+        assertThat(
+            ProductModel.get().masterData().where(catalogQuery).toSphereQuery())
+        .isEqualTo("masterData(current(name(en=\"Yes\") or name(en=\"Ja\")) or staged(name(en=\"Yes\") or name(en=\"Ja\")))");
     }
 
     @Test
     public void connectPredicatesWithAnd() {
-        final String expected = expected1 + " and " + expected2;
-        assertThat(query3.toSphereQuery()).isEqualTo(expected);
+        assertThat(
+            ProductModel.get().id().is("ABC-12")
+            .and(ProductModel.get().masterData().current().name().lang(en).is("MB PREMIUM TECH T"))
+            .toSphereQuery())
+        .isEqualTo("id=\"ABC-12\" and " +
+                "masterData(current(name(en=\"MB PREMIUM TECH T\")))");
     }
 
     @Test
     public void sort() {
         final String expected = "masterData.current.name.en asc";
-        final String actual = q.masterData().current().name(en).sort(ASC).toSphereSort();
+        final String actual = ProductModel.get().masterData().current().name().lang(en).sort(ASC).toSphereSort();
+
         assertThat(actual).isEqualTo(expected);
     }
 }
